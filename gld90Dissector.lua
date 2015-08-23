@@ -80,6 +80,8 @@ end
 
 local function dissectHeightAboveTerrain(buffer,pinfo,subtree)
   dissectMessageID(buffer,pinfo,subtree," (Height Above Terrain)")
+
+  subtree:add(buffer(2,2),"Height Above Terrain: " .. buffer(2,2):int() .. " ft.")
 end
 
 local function dissectOwnshipReport(buffer,pinfo,subtree)
