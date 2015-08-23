@@ -49,6 +49,29 @@ end
 
 local function dissectInitialization(buffer,pinfo,subtree)
   dissectMessageID(buffer,pinfo,subtree," (Initialization)")
+
+  local configByte1Tree = subtree:add(gdl90_proto,buffer(2,1),"Configuration Byte 1")
+  local configByteValue = buffer(2,1):uint()
+  configByte1Tree:add(buffer(2,1),"Reserved     : " .. bitValue(configByteValue,7))
+  configByte1Tree:add(buffer(2,1),"Audio Test   : " .. bitValue(configByteValue,6))
+  configByte1Tree:add(buffer(2,1),"Reserved     : " .. bitValue(configByteValue,5))
+  configByte1Tree:add(buffer(2,1),"Reserved     : " .. bitValue(configByteValue,4))
+  configByte1Tree:add(buffer(2,1),"Reserved     : " .. bitValue(configByteValue,3))
+  configByte1Tree:add(buffer(2,1),"Reserved     : " .. bitValue(configByteValue,2))
+  configByte1Tree:add(buffer(2,1),"Audio Inhibit: " .. bitValue(configByteValue,1))
+  configByte1Tree:add(buffer(2,1),"CDTI OK      : " .. bitValue(configByteValue,0))
+
+  local configByte2Tree = subtree:add(gdl90_proto,buffer(3,1),"Configuration Byte 2")
+  local configByte2Value = buffer(3,1):uint()
+  configByte2Tree:add(buffer(3,1),"Reserved         : " .. bitValue(configByte2Value,7))
+  configByte2Tree:add(buffer(3,1),"Reserved         : " .. bitValue(configByte2Value,6))
+  configByte2Tree:add(buffer(3,1),"Reserved         : " .. bitValue(configByte2Value,5))
+  configByte2Tree:add(buffer(3,1),"Reserved         : " .. bitValue(configByte2Value,4))
+  configByte2Tree:add(buffer(3,1),"Reserved         : " .. bitValue(configByte2Value,3))
+  configByte2Tree:add(buffer(3,1),"Reserved         : " .. bitValue(configByte2Value,2))
+  configByte2Tree:add(buffer(3,1),"CSA Audio Disable: " .. bitValue(configByte2Value,1))
+  configByte2Tree:add(buffer(3,1),"CSA Disable      : " .. bitValue(configByte2Value,0))
+
 end
 
 local function dissectUplinkData(buffer,pinfo,subtree)
