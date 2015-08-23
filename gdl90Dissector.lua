@@ -76,6 +76,12 @@ end
 
 local function dissectUplinkData(buffer,pinfo,subtree)
   dissectMessageID(buffer,pinfo,subtree," (Uplink Data)")
+
+  subtree:add(buffer(2,3),"Time Of Reception: " .. buffer(2,3):uint())
+  subtree:add(buffer(5,8),"UAT Header: " .. buffer(5,8))
+
+  local appDataLen = buffer:reported_length_remaining() - 14
+  subtree:add(buffer(11,appDataLen),"Application Data: " .. buffer(11,appDataLen))
 end
 
 local function dissectHeightAboveTerrain(buffer,pinfo,subtree)
