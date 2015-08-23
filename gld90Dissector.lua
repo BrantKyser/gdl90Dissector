@@ -2,17 +2,94 @@
 -- declare our protocol
 gdl90_proto = Proto("gdl90","GDL 90")
 
--- Define descriptions of message IDs
-msgIDdescriptions = {}
-msgIDdescriptions[0]  = "Heartbeat"
-msgIDdescriptions[2]  = "Initialization"
-msgIDdescriptions[7]  = "Uplink Data"
-msgIDdescriptions[9]  = "Height Above Terain"
-msgIDdescriptions[10] = "Ownship Report"
-msgIDdescriptions[11] = "Ownship Geometric Altitude"
-msgIDdescriptions[20] = "Traffic Report"
-msgIDdescriptions[30] = "Basic Report"
-msgIDdescriptions[31] = "Long Report"
+local function dissectMessageID(buffer,pinfo,subtree,desc)
+  subtree:add(buffer(1,1),"Message ID: " .. buffer(1,1):uint() .. desc)
+end
+
+local function bitValue(byteValue,pos)
+ return bit32.rshift(bit32.band(bit32.lshift(1,pos),byteValue),pos)
+end
+
+local function dissectHeartbeat(buffer,pinfo,subtree)
+  dissectMessageID(buffer,pinfo,subtree," (Heartbeat)")
+
+  local statusByte1Tree = subtree:add(gdl90_proto,buffer(2,1),"Status Byte 1")
+  local statusByteValue = buffer(2,1):uint()
+  statusByte1Tree:add(buffer(2,1),"GPS Pos Valid  : " .. bitValue(statusByteValue,7))
+  statusByte1Tree:add(buffer(2,1),"Maint Required : " .. bitValue(statusByteValue,6))
+  statusByte1Tree:add(buffer(2,1),"IDENT          : " .. bitValue(statusByteValue,5))
+  statusByte1Tree:add(buffer(2,1),"Address Type   : " .. bitValue(statusByteValue,4))
+  statusByte1Tree:add(buffer(2,1),"GPS Batt Low   : " .. bitValue(statusByteValue,3))
+  statusByte1Tree:add(buffer(2,1),"RATCS          : " .. bitValue(statusByteValue,2))
+  statusByte1Tree:add(buffer(2,1),"Reserved       : " .. bitValue(statusByteValue,1))
+  statusByte1Tree:add(buffer(2,1),"UAT Initialized: " .. bitValue(statusByteValue,0))
+
+  local statusByte2Tree = subtree:add(gdl90_proto,buffer(3,1),"Status Byte 2")
+  local statusByte2Value = buffer(3,1):uint()
+  statusByte2Tree:add(buffer(3,1),"Time Stamp MSB   : " .. bitValue(statusByte2Value,7))
+  statusByte2Tree:add(buffer(3,1),"CSA Requested    : " .. bitValue(statusByte2Value,6))
+  statusByte2Tree:add(buffer(3,1),"CSA Not Available: " .. bitValue(statusByte2Value,5))
+  statusByte2Tree:add(buffer(3,1),"Reserved         : " .. bitValue(statusByte2Value,4))
+  statusByte2Tree:add(buffer(3,1),"Reserved         : " .. bitValue(statusByte2Value,3))
+  statusByte2Tree:add(buffer(3,1),"Reserved         : " .. bitValue(statusByte2Value,2))
+  statusByte2Tree:add(buffer(3,1),"Reserved         : " .. bitValue(statusByte2Value,1))
+  statusByte2Tree:add(buffer(3,1),"UTC OK           : " .. bitValue(statusByte2Value,0))
+
+  local timeStampValueMSB = bit32.lshift(buffer(3,1):uint(),9)
+  local timeStampValue = bit32.bor(timeStampValueMSB,buffer(4,2):uint())
+
+  subtree:add(buffer(3,3),"Time Stamp: " .. timeStampValue .. " Seconds since 0000Z")
+
+  local msgCountsTree = subtree:add(gdl90_proto,buffer(6,2),"Message Counts")
+  local uplinkReceptionsValue = bit32.rshift(buffer(6,1):uint(),3)
+  local basicAndLongReceptionsValue = bit32.bor(bit32.band(buffer(6,1):uint(),3),buffer(7,1):uint())
+  msgCountsTree:add(buffer(6,1),"Uplink Receptions: " .. uplinkReceptionsValue)
+  msgCountsTree:add(buffer(6,2),"Basic and Long Receptions: " .. basicAndLongReceptionsValue)
+end
+
+local function dissectInitialization(buffer,pinfo,subtree)
+  dissectMessageID(buffer,pinfo,subtree," (Initialization)")
+end
+
+local function dissectUplinkData(buffer,pinfo,subtree)
+  dissectMessageID(buffer,pinfo,subtree," (Uplink Data)")
+end
+
+local function dissectHeightAboveTerrain(buffer,pinfo,subtree)
+  dissectMessageID(buffer,pinfo,subtree," (Height Above Terrain)")
+end
+
+local function dissectOwnshipReport(buffer,pinfo,subtree)
+  dissectMessageID(buffer,pinfo,subtree," (Ownship Report)")
+end
+
+local function dissectOwnshipGeometricAltitude(buffer,pinfo,subtree)
+  dissectMessageID(buffer,pinfo,subtree," (Ownship Geometric Altitude)")
+end
+
+local function dissectTrafficReport(buffer,pinfo,subtree)
+  dissectMessageID(buffer,pinfo,subtree," (Traffic Report)")
+end
+
+local function dissectBasicReport(buffer,pinfo,subtree)
+  dissectMessageID(buffer,pinfo,subtree," (Basic Report)")
+end
+
+local function dissectLongReport(buffer,pinfo,subtree)
+  dissectMessageID(buffer,pinfo,subtree," (Long Report)")
+end
+
+-- Map Message ID values to methods to dissect particular type of message
+msgDissectFunctions = {}
+msgDissectFunctions[0]  = dissectHeartbeat
+msgDissectFunctions[2]  = dissectInitialization
+msgDissectFunctions[7]  = dissectUplinkData
+msgDissectFunctions[9]  = dissectHeightAboveTerrain
+msgDissectFunctions[10] = dissectOwnshipReport
+msgDissectFunctions[11] = dissectOwnshipGeometricAltitude
+msgDissectFunctions[20] = dissectTrafficReport
+msgDissectFunctions[30] = dissectBasicReport
+msgDissectFunctions[31] = dissectLongReport
 
 -- create a function to dissect it
 function gdl90_proto.dissector(buffer,pinfo,tree)
@@ -22,7 +99,8 @@ function gdl90_proto.dissector(buffer,pinfo,tree)
 
   local subtree = tree:add(gdl90_proto,buffer(),"GDL 90 Data")
   subtree:add(buffer(0,1),"Flag Byte: " .. buffer(0,1):uint())
-  subtree:add(buffer(1,1),"Message ID: " .. buffer(1,1):uint() .. " (" .. msgIDdescriptions[buffer(1,1):uint()] .. ")")
+  
+  msgDissectFunctions[buffer(1,1):uint()](buffer,pinfo,subtree)
 
   subtree:add(buffer(pktlen-3,2),"Frame Check Sequence: 0x" .. string.format("%x",buffer(pktlen-3,2):uint()))
   subtree:add(buffer(pktlen-1,1),"Flag Byte: " .. buffer(pktlen-1,1):uint())
