@@ -90,8 +90,65 @@ local function dissectHeightAboveTerrain(buffer,pinfo,subtree)
   subtree:add(buffer(2,2),"Height Above Terrain: " .. buffer(2,2):int() .. " ft.")
 end
 
+local function dissectTrafficReportFields(buffer,pinfo,subtree)
+  local trafficAlertStatus = bit32.rshift(buffer(0,1):uint(),4)
+  subtree:add(buffer(0,1), "Traffic Alert Status: " .. trafficAlertStatus)
+
+  local addressType = bit32.extract(buffer(0,1):uint(),0,4)
+  subtree:add(buffer(0,1), "Address Type: " .. addressType)
+
+  subtree:add(buffer(1,3), "Participant Address: 0x" .. string.format("%x", buffer(1,3):uint()))
+
+  -- TODO Convert to DMS or other
+  -- Provided as 24-bit signed binary fraction
+  local latitude = buffer(4,3):uint()
+  subtree:add(buffer(4,3), "Latitude: " .. latitude)
+  local longitude = buffer(7,3):uint()
+  subtree:add(buffer(7,3), "Longitude: " .. longitude)
+
+  -- Altitude given in feet ("ddd" * 25) - 1000
+  local altitude = bit32.rshift(buffer(10,2):uint(),4)
+  altitude = altitude * 25 - 1000
+  subtree:add(buffer(10,2), "Altitude: " .. altitude .. " feet")
+
+  local miscIndicatorsTree = subtree:add(gdl90_proto,buffer(11,1),"Miscellaneous Indicators")
+  local miscIndicatorsValue = bit32.extract(buffer(11,1):uint(),0,4)
+  miscIndicatorsTree:add(buffer(11,1), "Airborne: " .. bitValue(miscIndicatorsValue,3))
+  miscIndicatorsTree:add(buffer(11,1), "Report Extrapolated: " .. bitValue(miscIndicatorsValue,2))
+  miscIndicatorsTree:add(buffer(11,1), "TT: " .. bit32.extract(miscIndicatorsValue,0,2))
+
+  subtree:add(buffer(12,1), "NIC: " .. bit32.rshift(buffer(12,1):uint(),4))
+  subtree:add(buffer(12,1), "NACp: " .. bit32.extract(buffer(12,1):uint(),0,4))
+
+  subtree:add(buffer(13,2), "Horizontal Velocity: " .. bit32.rshift(buffer(13,2):uint(),4) .. " knots")
+
+  -- Vertical velocity signed in units of 64 fpm
+  local verticalVelocity = bit32.extract(buffer(14,2):uint(),0,12)
+  if (bit32.band(verticalVelocity, 0x800) == 0x800) then
+    -- Negative value, convert
+    verticalVelocity = -bit32.bxor(verticalVelocity, 0x00000FFF) - 1
+  end
+  verticalVelocity = verticalVelocity * 64
+  subtree:add(buffer(14,2), "Vertical Velocity: " .. verticalVelocity .. " fpm")
+
+  -- Track/Heading 8-bit angular weighted binary, resolution 360/256 degrees
+  -- 0=North, 128=South
+  local tt = buffer(16,1):uint() * 360 / 256;
+  subtree:add(buffer(16,1), "Track/Heading: " .. tt)
+
+  subtree:add(buffer(17,1), "Emitter Category: " .. buffer(17,1):uint())
+
+  subtree:add(buffer(18,8), "Callsign: " .. buffer(18,8):string())
+
+  subtree:add(buffer(26,1), "Emergency/Priority Code: " .. bit32.rshift(buffer(26,1):uint(),4))
+  subtree:add(buffer(26,1), "Spare: " .. bit32.extract(buffer(26,1):uint(),0,4))
+
+end
+
 local function dissectOwnshipReport(buffer,pinfo,subtree)
   dissectMessageID(buffer,pinfo,subtree," (Ownship Report)")
+
+  dissectTrafficReportFields(buffer(2,27),pinfo,subtree);
 end
 
 local function dissectOwnshipGeometricAltitude(buffer,pinfo,subtree)
@@ -108,6 +165,8 @@ end
 
 local function dissectTrafficReport(buffer,pinfo,subtree)
   dissectMessageID(buffer,pinfo,subtree," (Traffic Report)")
+
+  dissectTrafficReportFields(buffer(2,27),pinfo,subtree);
 end
 
 local function dissectBasicReport(buffer,pinfo,subtree)
@@ -116,6 +175,34 @@ end
 
 local function dissectLongReport(buffer,pinfo,subtree)
   dissectMessageID(buffer,pinfo,subtree," (Long Report)")
+end
+
+local function dissectUavionixStatic(buffer,pinfo,subtree)
+  dissectMessageID(buffer,pinfo,subtree," (uAvionix Static Configuration)")
+
+  subtree:add(buffer(2,1), "Signature: " .. buffer(2,1):uint())
+  subtree:add(buffer(3,1), "Subtype: " .. buffer(3,1):uint())
+  subtree:add(buffer(4,1), "Version: " .. buffer(4,1):uint())
+
+  subtree:add(buffer(5,3), "ICAO Address: 0x" .. string.format("%x", buffer(5,3):uint()))
+
+  subtree:add(buffer(8,1), "Emitter Category: " .. buffer(8,1):uint())
+
+  subtree:add(buffer(9,8), "Callsign: " .. buffer(9,8):string())
+
+  subtree:add(buffer(17,1), "Vs0: " .. buffer(17,1):uint())
+
+  local lenWidth = bit32.extract(buffer(18,1):uint(),0,4)
+  subtree:add(buffer(18,1), "Vehicle Length/Width: " .. lenWidth .. "(0x" .. string.format("%x", lenWidth) .. ")")
+
+  local antOffsetLat = bit32.rshift(buffer(19,1):uint(),5)
+  subtree:add(buffer(19,1), "Antenna Offset Lat: " .. antOffsetLat .. "(0x" .. string.format("%x", antOffsetLat) .. ")")
+  local antOffsetLon = bit32.extract(buffer(19,1):uint(),0,5)
+  subtree:add(buffer(19,1), "Antenna Offset Lon: " .. antOffsetLon .. "(0x" .. string.format("%x", antOffsetLon) .. ")")
+end
+
+local function dissectUnknown(buffer,pinfo,subtree)
+  dissectMessageID(buffer,pinfo,subtree," (Unknown 0x" .. string.format("%x", buffer(1,1):uint()) .. ")")
 end
 
 -- Map Message ID values to methods to dissect particular type of message
@@ -128,7 +215,7 @@ msgDissectFunctions[10] = dissectOwnshipReport
 msgDissectFunctions[11] = dissectOwnshipGeometricAltitude
 msgDissectFunctions[20] = dissectTrafficReport
 msgDissectFunctions[30] = dissectBasicReport
-msgDissectFunctions[31] = dissectLongReport
+msgDissectFunctions[117] = dissectUavionixStatic
 
 -- create a function to dissect it
 function gdl90_proto.dissector(buffer,pinfo,tree)
@@ -139,7 +226,12 @@ function gdl90_proto.dissector(buffer,pinfo,tree)
   local subtree = tree:add(gdl90_proto,buffer(),"GDL 90 Data")
   subtree:add(buffer(0,1),"Flag Byte: " .. buffer(0,1):uint())
   
-  msgDissectFunctions[buffer(1,1):uint()](buffer,pinfo,subtree)
+  if (msgDissectFunctions[buffer(1,1):uint()] == nil) then
+    dissectUnknown(buffer,pinfo,subtree)
+  else
+    msgDissectFunctions[buffer(1,1):uint()](buffer,pinfo,subtree)
+  end
+
 
   subtree:add(buffer(pktlen-3,2),"Frame Check Sequence: 0x" .. string.format("%x",buffer(pktlen-3,2):uint()))
   subtree:add(buffer(pktlen-1,1),"Flag Byte: " .. buffer(pktlen-1,1):uint())
