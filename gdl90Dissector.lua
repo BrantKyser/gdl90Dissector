@@ -91,6 +91,22 @@ local function dissectHeightAboveTerrain(buffer,pinfo,subtree)
   subtree:add(buffer(2,2),"Height Above Terrain: " .. buffer(2,2):int() .. " ft.")
 end
 
+-- Convert to degrees
+-- Provided as 24-bit signed binary fraction
+-- Encoded as a "semicircle" 2s complement
+-- North and East are positive, +-180
+-- No valid position is lat=lon=NIC=0
+-- TODO Validate proper decode
+local function decodeLatLon(value)
+  local deg = value
+  if (bit32.band(value, 0x800000) == 0x800000) then
+    -- Negative value
+    deg = bit32.band(value, 0x000007FFFFF)-0x800000
+  end
+  deg = deg * 180 / 0x800000
+  return deg
+end
+
 local function dissectTrafficReportFields(buffer,pinfo,subtree)
   local trafficAlertStatus = bit32.rshift(buffer(0,1):uint(),4)
   subtree:add(buffer(0,1), "Traffic Alert Status: " .. trafficAlertStatus)
@@ -100,11 +116,11 @@ local function dissectTrafficReportFields(buffer,pinfo,subtree)
 
   subtree:add(buffer(1,3), "Participant Address: 0x" .. string.format("%x", buffer(1,3):uint()))
 
-  -- TODO Convert to DMS or other
-  -- Provided as 24-bit signed binary fraction
   local latitude = buffer(4,3):uint()
+  latitude = decodeLatLon(latitude)
   subtree:add(buffer(4,3), "Latitude: " .. latitude)
   local longitude = buffer(7,3):uint()
+  longitude = decodeLatLon(longitude)
   subtree:add(buffer(7,3), "Longitude: " .. longitude)
 
   -- Altitude given in feet ("ddd" * 25) - 1000
@@ -124,10 +140,13 @@ local function dissectTrafficReportFields(buffer,pinfo,subtree)
   subtree:add(buffer(13,2), "Horizontal Velocity: " .. bit32.rshift(buffer(13,2):uint(),4) .. " knots")
 
   -- Vertical velocity signed in units of 64 fpm
+  -- 0x000 is 0
+  -- 0x001 is +64
+  -- 0xFFF is -64
   local verticalVelocity = bit32.extract(buffer(14,2):uint(),0,12)
   if (bit32.band(verticalVelocity, 0x800) == 0x800) then
     -- Negative value, convert
-    verticalVelocity = -bit32.bxor(verticalVelocity, 0x00000FFF) - 1
+    verticalVelocity = bit32.band(verticalVelocity, 0x000007FF)-0x800
   end
   verticalVelocity = verticalVelocity * 64
   subtree:add(buffer(14,2), "Vertical Velocity: " .. verticalVelocity .. " fpm")
@@ -206,6 +225,11 @@ local function dissectUnknown(buffer,pinfo,subtree)
   dissectMessageID(buffer,pinfo,subtree," (Unknown 0x" .. string.format("%x", buffer(1,1):uint()) .. ")")
 end
 
+local function validateFcs(buffer,pinfo,subtree)
+  local pktlen = buffer:reported_length_remaining()
+  subtree:add(buffer(pktlen-3,2),"Frame Check Sequence: 0x" .. string.format("%x",buffer(pktlen-3,2):uint()))
+end
+
 -- Map Message ID values to methods to dissect particular type of message
 msgDissectFunctions = {}
 msgDissectFunctions[0]  = dissectHeartbeat
@@ -233,11 +257,10 @@ function gdl90_proto.dissector(buffer,pinfo,tree)
     msgDissectFunctions[buffer(1,1):uint()](buffer,pinfo,subtree)
   end
 
-
-  subtree:add(buffer(pktlen-3,2),"Frame Check Sequence: 0x" .. string.format("%x",buffer(pktlen-3,2):uint()))
+  validateFcs(buffer,pinfo,subtree)
   subtree:add(buffer(pktlen-1,1),"Flag Byte: " .. buffer(pktlen-1,1):uint())
 end
 -- load the udp.port table
 udp_table = DissectorTable.get("udp.port")
--- register our protocol to handle udp port 7777
+-- register our protocol to handle udp port 4000
 udp_table:add(4000,gdl90_proto)
