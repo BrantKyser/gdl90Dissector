@@ -35,8 +35,9 @@ local function dissectHeartbeat(buffer,pinfo,subtree)
   statusByte2Tree:add(buffer(3,1),"Reserved         : " .. bitValue(statusByte2Value,1))
   statusByte2Tree:add(buffer(3,1),"UTC OK           : " .. bitValue(statusByte2Value,0))
 
-  local timeStampValueMSB = bit32.lshift(buffer(3,1):uint(),9)
-  local timeStampValue = bit32.bor(timeStampValueMSB,buffer(4,2):uint())
+  local timeStampValueMSB = bit32.lshift(buffer(3,1):uint(),16)
+  local timeStampValue = bit32.bor(timeStampValueMSB,buffer(4,1):uint())
+  timeStampValue = bit32.bor(timeStampValue,bit32.lshift(buffer(5,1):uint(),8))
 
   subtree:add(buffer(3,3),"Time Stamp: " .. timeStampValue .. " Seconds since 0000Z")
 
