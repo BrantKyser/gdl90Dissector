@@ -115,7 +115,7 @@ local function dissectTrafficReportFields(buffer,pinfo,subtree)
   local addressType = bit32.extract(buffer(0,1):uint(),0,4)
   subtree:add(buffer(0,1), "Address Type: " .. addressType)
 
-  subtree:add(buffer(1,3), "Participant Address: 0x" .. string.format("%x", buffer(1,3):uint()))
+  subtree:add(buffer(1,3), string.format("Participant Address (hex): %02X%02X%02X", buffer(3,1):uint(), buffer(2,1):uint(), buffer(1,1):uint()))
 
   local latitude = buffer(4,3):uint()
   latitude = decodeLatLon(latitude)
@@ -202,24 +202,46 @@ local function dissectUavionixStatic(buffer,pinfo,subtree)
   dissectMessageID(buffer,pinfo,subtree,"uAvionix Static Configuration")
 
   subtree:add(buffer(2,1), "Signature: " .. buffer(2,1):uint())
-  subtree:add(buffer(3,1), "Subtype: " .. buffer(3,1):uint())
+  local subtype = buffer(3,1):uint()
+  subtree:add(buffer(3,1), "Subtype: " .. subtype)
   subtree:add(buffer(4,1), "Version: " .. buffer(4,1):uint())
 
-  subtree:add(buffer(5,3), "ICAO Address: 0x" .. string.format("%x", buffer(5,3):uint()))
+  if (subtype == 1) then
+    -- Static packet
 
-  subtree:add(buffer(8,1), "Emitter Category: " .. buffer(8,1):uint())
+    subtree:add(buffer(5,3), string.format("ICAO Address (hex): %02X%02X%02X", buffer(7,1):uint(), buffer(6,1):uint(), buffer(5,1):uint()))
+    subtree:add(buffer(8,1), "Emitter Category: " .. buffer(8,1):uint())
+    subtree:add(buffer(9,8), "Callsign: " .. buffer(9,8):string())
+    subtree:add(buffer(17,1), "Vs0: " .. buffer(17,1):uint())
 
-  subtree:add(buffer(9,8), "Callsign: " .. buffer(9,8):string())
+    local lenWidth = bit32.extract(buffer(18,1):uint(),0,4)
+    subtree:add(buffer(18,1), "Vehicle Length/Width: " .. lenWidth .. " (0x" .. string.format("%x", lenWidth) .. ")")
 
-  subtree:add(buffer(17,1), "Vs0: " .. buffer(17,1):uint())
-
-  local lenWidth = bit32.extract(buffer(18,1):uint(),0,4)
-  subtree:add(buffer(18,1), "Vehicle Length/Width: " .. lenWidth .. "(0x" .. string.format("%x", lenWidth) .. ")")
-
-  local antOffsetLat = bit32.rshift(buffer(19,1):uint(),5)
-  subtree:add(buffer(19,1), "Antenna Offset Lat: " .. antOffsetLat .. "(0x" .. string.format("%x", antOffsetLat) .. ")")
-  local antOffsetLon = bit32.extract(buffer(19,1):uint(),0,5)
-  subtree:add(buffer(19,1), "Antenna Offset Lon: " .. antOffsetLon .. "(0x" .. string.format("%x", antOffsetLon) .. ")")
+    local antOffsetLat = bit32.rshift(buffer(19,1):uint(),5)
+    subtree:add(buffer(19,1), "Antenna Offset Lat: " .. antOffsetLat .. " (0x" .. string.format("%x", antOffsetLat) .. ")")
+    local antOffsetLon = bit32.extract(buffer(19,1):uint(),0,5)
+    subtree:add(buffer(19,1), "Antenna Offset Lon: " .. antOffsetLon .. " (0x" .. string.format("%x", antOffsetLon) .. ")")
+  elseif (subtype == 2) then
+    -- Setup packet
+    local sil = buffer(5,1):uint()
+    local sda = buffer(6,1):uint()
+    local threshold = bit32.bxor(bit32.lshift(buffer(8,1):uint(), 8), buffer(7,1):uint())
+    if (sil == 0xFF) then
+      subtree:add(buffer(5,1), "SIL: Not Provided (0xff)")
+    else
+      subtree:add(buffer(5,1), "SIL: " .. sil)
+    end
+    if (sda == 0xFF) then
+      subtree:add(buffer(6,1), "SDA: Not Provided (0xff)")
+    else
+      subtree:add(buffer(6,1), "SDA: " .. sda)
+    end
+    if (threshold == 0xFFFF) then
+      subtree:add(buffer(7,2), "Sniffer Threshold: Not Provided (0xffff)")
+    else
+      subtree:add(buffer(7,2), "Sniffer Threshold: " .. threshold)
+    end
+  end
 end
 
 local function dissectUnknown(buffer,pinfo,subtree)
@@ -353,7 +375,7 @@ function gdl90_proto.dissector(buffer,pinfo,tree)
   local subtree = tree:add(gdl90_proto,decodedBuffer(),"GDL 90 Data")
   subtree:add(buffer(0,pktlen),"Stuffed Len: " .. pktlen)
   subtree:add(decodedBuffer(0,decodedLen),"Unstuffed Len: " .. decodedLen)
-  subtree:add(decodedBuffer(0,1),"Flag Byte: " .. decodedBuffer(0,1):uint())
+  subtree:add(decodedBuffer(0,1),string.format("Flag Byte: 0x%02x", decodedBuffer(0,1):uint()))
   
   if (msgDissectFunctions[decodedBuffer(1,1):uint()] == nil) then
     dissectUnknown(decodedBuffer,pinfo,subtree)
@@ -362,7 +384,7 @@ function gdl90_proto.dissector(buffer,pinfo,tree)
   end
 
   local validFcs = validateFcs(decodedBuffer,pinfo,subtree)
-  subtree:add(decodedBuffer(decodedLen-1,1),"Flag Byte: " .. decodedBuffer(decodedLen-1,1):uint())
+  subtree:add(decodedBuffer(decodedLen-1,1),string.format("Flag Byte: 0x%02x", decodedBuffer(decodedLen-1,1):uint()))
 
   if pktlen ~= decodedLen then
     pinfo.cols.info = tostring(pinfo.cols.info) .. ", Stuffed"
