@@ -115,7 +115,7 @@ local function dissectTrafficReportFields(buffer,pinfo,subtree)
   local addressType = bit32.extract(buffer(0,1):uint(),0,4)
   subtree:add(buffer(0,1), "Address Type: " .. addressType)
 
-  subtree:add(buffer(1,3), string.format("Participant Address (hex): %02X%02X%02X", buffer(3,1):uint(), buffer(2,1):uint(), buffer(1,1):uint()))
+  subtree:add(buffer(1,3), "Participant Address (hex): " .. buffer(1,3):bytes():tohex())
 
   local latitude = buffer(4,3):uint()
   latitude = decodeLatLon(latitude)
