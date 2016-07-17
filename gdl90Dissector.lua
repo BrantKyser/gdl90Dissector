@@ -209,7 +209,7 @@ local function dissectUavionixStatic(buffer,pinfo,subtree)
   if (subtype == 1) then
     -- Static packet
 
-    subtree:add(buffer(5,3), string.format("ICAO Address (hex): %02X%02X%02X", buffer(7,1):uint(), buffer(6,1):uint(), buffer(5,1):uint()))
+    subtree:add(buffer(5,3), "ICAO Address (hex): " .. buffer(5,3):bytes():tohex())
     subtree:add(buffer(8,1), "Emitter Category: " .. buffer(8,1):uint())
     subtree:add(buffer(9,8), "Callsign: " .. buffer(9,8):string())
     subtree:add(buffer(17,1), "Vs0: " .. buffer(17,1):uint())
