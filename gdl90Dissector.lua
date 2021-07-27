@@ -8,7 +8,7 @@ local function dissectMessageID(buffer,pinfo,subtree,desc)
 end
 
 local function bitValue(byteValue,pos)
- return bit32.rshift(bit32.band(bit32.lshift(1,pos),byteValue),pos)
+ return bit.rshift(bit.band(bit.lshift(1,pos),byteValue),pos)
 end
 
 local function dissectHeartbeat(buffer,pinfo,subtree)
@@ -36,15 +36,15 @@ local function dissectHeartbeat(buffer,pinfo,subtree)
   statusByte2Tree:add(buffer(3,1),"Reserved         : " .. bitValue(statusByte2Value,1))
   statusByte2Tree:add(buffer(3,1),"UTC OK           : " .. bitValue(statusByte2Value,0))
 
-  local timeStampValueMSB = bit32.lshift(buffer(3,1):uint(),16)
-  local timeStampValue = bit32.bor(timeStampValueMSB,buffer(4,1):uint())
-  timeStampValue = bit32.bor(timeStampValue,bit32.lshift(buffer(5,1):uint(),8))
+  local timeStampValueMSB = bit.lshift(buffer(3,1):uint(),16)
+  local timeStampValue = bit.bor(timeStampValueMSB,buffer(4,1):uint())
+  timeStampValue = bit.bor(timeStampValue,bit.lshift(buffer(5,1):uint(),8))
 
   subtree:add(buffer(3,3),"Time Stamp: " .. timeStampValue .. " Seconds since 0000Z")
 
   local msgCountsTree = subtree:add(gdl90_proto,buffer(6,2),"Message Counts")
-  local uplinkReceptionsValue = bit32.rshift(buffer(6,1):uint(),3)
-  local basicAndLongReceptionsValue = bit32.bor(bit32.band(buffer(6,1):uint(),3),buffer(7,1):uint())
+  local uplinkReceptionsValue = bit.rshift(buffer(6,1):uint(),3)
+  local basicAndLongReceptionsValue = bit.bor(bit.band(buffer(6,1):uint(),3),buffer(7,1):uint())
   msgCountsTree:add(buffer(6,1),"Uplink Receptions: " .. uplinkReceptionsValue)
   msgCountsTree:add(buffer(6,2),"Basic and Long Receptions: " .. basicAndLongReceptionsValue)
 end
@@ -100,19 +100,19 @@ end
 -- TODO Validate proper decode
 local function decodeLatLon(value)
   local deg = value
-  if (bit32.band(value, 0x800000) == 0x800000) then
+  if (bit.band(value, 0x800000) == 0x800000) then
     -- Negative value
-    deg = bit32.band(value, 0x000007FFFFF)-0x800000
+    deg = bit.band(value, 0x000007FFFFF)-0x800000
   end
   deg = deg * 180 / 0x800000
   return deg
 end
 
 local function dissectTrafficReportFields(buffer,pinfo,subtree)
-  local trafficAlertStatus = bit32.rshift(buffer(0,1):uint(),4)
+  local trafficAlertStatus = bit.rshift(buffer(0,1):uint(),4)
   subtree:add(buffer(0,1), "Traffic Alert Status: " .. trafficAlertStatus)
 
-  local addressType = bit32.extract(buffer(0,1):uint(),0,4)
+  local addressType = bit.extract(buffer(0,1):uint(),0,4)
   subtree:add(buffer(0,1), "Address Type: " .. addressType)
 
   subtree:add(buffer(1,3), "Participant Address (hex): " .. buffer(1,3):bytes():tohex())
@@ -125,29 +125,29 @@ local function dissectTrafficReportFields(buffer,pinfo,subtree)
   subtree:add(buffer(7,3), "Longitude: " .. longitude)
 
   -- Altitude given in feet ("ddd" * 25) - 1000
-  local altitude = bit32.rshift(buffer(10,2):uint(),4)
+  local altitude = bit.rshift(buffer(10,2):uint(),4)
   altitude = altitude * 25 - 1000
   subtree:add(buffer(10,2), "Altitude: " .. altitude .. " feet")
 
   local miscIndicatorsTree = subtree:add(gdl90_proto,buffer(11,1),"Miscellaneous Indicators")
-  local miscIndicatorsValue = bit32.extract(buffer(11,1):uint(),0,4)
+  local miscIndicatorsValue = bit.extract(buffer(11,1):uint(),0,4)
   miscIndicatorsTree:add(buffer(11,1), "Airborne: " .. bitValue(miscIndicatorsValue,3))
   miscIndicatorsTree:add(buffer(11,1), "Report Extrapolated: " .. bitValue(miscIndicatorsValue,2))
-  miscIndicatorsTree:add(buffer(11,1), "TT: " .. bit32.extract(miscIndicatorsValue,0,2))
+  miscIndicatorsTree:add(buffer(11,1), "TT: " .. bit.extract(miscIndicatorsValue,0,2))
 
-  subtree:add(buffer(12,1), "NIC: " .. bit32.rshift(buffer(12,1):uint(),4))
-  subtree:add(buffer(12,1), "NACp: " .. bit32.extract(buffer(12,1):uint(),0,4))
+  subtree:add(buffer(12,1), "NIC: " .. bit.rshift(buffer(12,1):uint(),4))
+  subtree:add(buffer(12,1), "NACp: " .. bit.extract(buffer(12,1):uint(),0,4))
 
-  subtree:add(buffer(13,2), "Horizontal Velocity: " .. bit32.rshift(buffer(13,2):uint(),4) .. " knots")
+  subtree:add(buffer(13,2), "Horizontal Velocity: " .. bit.rshift(buffer(13,2):uint(),4) .. " knots")
 
   -- Vertical velocity signed in units of 64 fpm
   -- 0x000 is 0
   -- 0x001 is +64
   -- 0xFFF is -64
-  local verticalVelocity = bit32.extract(buffer(14,2):uint(),0,12)
-  if (bit32.band(verticalVelocity, 0x800) == 0x800) then
+  local verticalVelocity = bit.extract(buffer(14,2):uint(),0,12)
+  if (bit.band(verticalVelocity, 0x800) == 0x800) then
     -- Negative value, convert
-    verticalVelocity = bit32.band(verticalVelocity, 0x000007FF)-0x800
+    verticalVelocity = bit.band(verticalVelocity, 0x000007FF)-0x800
   end
   verticalVelocity = verticalVelocity * 64
   subtree:add(buffer(14,2), "Vertical Velocity: " .. verticalVelocity .. " fpm")
@@ -161,8 +161,8 @@ local function dissectTrafficReportFields(buffer,pinfo,subtree)
 
   subtree:add(buffer(18,8), "Callsign: " .. buffer(18,8):string())
 
-  subtree:add(buffer(26,1), "Emergency/Priority Code: " .. bit32.rshift(buffer(26,1):uint(),4))
-  subtree:add(buffer(26,1), "Spare: " .. bit32.extract(buffer(26,1):uint(),0,4))
+  subtree:add(buffer(26,1), "Emergency/Priority Code: " .. bit.rshift(buffer(26,1):uint(),4))
+  subtree:add(buffer(26,1), "Spare: " .. bit.extract(buffer(26,1):uint(),0,4))
 
 end
 
@@ -180,7 +180,7 @@ local function dissectOwnshipGeometricAltitude(buffer,pinfo,subtree)
   local verticalMetricsTree = subtree:add(gdl90_proto,buffer(4,2),"Vertical Metrics")
   verticalMetricsTree:add(buffer(4,1),"Vertical Warning indicator: " .. bitValue(buffer(4,1):uint(),7))
 
-  local verticalFigureOfMerritValue = bit32.band(32767, buffer(4,2):uint())
+  local verticalFigureOfMerritValue = bit.band(32767, buffer(4,2):uint())
   verticalMetricsTree:add(buffer(4,2),"Vertical Figure of Merit: " .. verticalFigureOfMerritValue)
 end
 
@@ -214,18 +214,18 @@ local function dissectUavionixStatic(buffer,pinfo,subtree)
     subtree:add(buffer(9,8), "Callsign: " .. buffer(9,8):string())
     subtree:add(buffer(17,1), "Vs0: " .. buffer(17,1):uint())
 
-    local lenWidth = bit32.extract(buffer(18,1):uint(),0,4)
+    local lenWidth = bit.extract(buffer(18,1):uint(),0,4)
     subtree:add(buffer(18,1), "Vehicle Length/Width: " .. lenWidth .. " (0x" .. string.format("%x", lenWidth) .. ")")
 
-    local antOffsetLat = bit32.rshift(buffer(19,1):uint(),5)
+    local antOffsetLat = bit.rshift(buffer(19,1):uint(),5)
     subtree:add(buffer(19,1), "Antenna Offset Lat: " .. antOffsetLat .. " (0x" .. string.format("%x", antOffsetLat) .. ")")
-    local antOffsetLon = bit32.extract(buffer(19,1):uint(),0,5)
+    local antOffsetLon = bit.extract(buffer(19,1):uint(),0,5)
     subtree:add(buffer(19,1), "Antenna Offset Lon: " .. antOffsetLon .. " (0x" .. string.format("%x", antOffsetLon) .. ")")
   elseif (subtype == 2) then
     -- Setup packet
     local sil = buffer(5,1):uint()
     local sda = buffer(6,1):uint()
-    local threshold = bit32.bxor(bit32.lshift(buffer(8,1):uint(), 8), buffer(7,1):uint())
+    local threshold = bit.bxor(bit.lshift(buffer(8,1):uint(), 8), buffer(7,1):uint())
     if (sil == 0xFF) then
       subtree:add(buffer(5,1), "SIL: Not Provided (0xff)")
     else
@@ -299,16 +299,16 @@ local function calculateCrc16(buffer)
   local crcTemp1, crcTemp2, crcTemp3
   -- Don't calculate CRC over flag bytes or CRC
   for i=1,pktlen-4 do
-    crcTemp1 = crcTable[bit32.band(bit32.rshift(crc, 8),0xFF)+1]
-    crcTemp2 = bit32.lshift(bit32.band(crc,0xFF), 8)
+    crcTemp1 = crcTable[bit.band(bit.rshift(crc, 8),0xFF)+1]
+    crcTemp2 = bit.lshift(bit.band(crc,0xFF), 8)
     crcTemp3 = buffer(i,1):uint()
-    crc = bit32.bxor(crcTemp1, crcTemp2, crcTemp3)
+    crc = bit.bxor(crcTemp1, crcTemp2, crcTemp3)
   end
   return crc;
 end
 
 local function swap16(value)
-  return bit32.band(bit32.rshift(value, 8) + bit32.lshift(value,8), 0xFFFF)
+  return bit.band(bit.rshift(value, 8) + bit.lshift(value,8), 0xFFFF)
 end
 
 -- Return true if valid
@@ -340,7 +340,7 @@ local function unBytestuff(buffer)
     else
       if flagged then
         -- TODO UNSTUFF
-        local dataByte = bit32.bxor(buffer(i,1):uint(),0x20)
+        local dataByte = bit.bxor(buffer(i,1):uint(),0x20)
         baOutput:append(ByteArray.new(string.format("%x",dataByte)))
       else
         baOutput:append(buffer(i,1):bytes())
